@@ -444,6 +444,10 @@ export function AppProvider({ children }) {
       0,
     ),
   );
+  const mediaCursorRef = useRef(
+    [...dbRef.current.posts, ...dbRef.current.reels, ...dbRef.current.stories]
+      .reduce((cursor, item) => Math.max(cursor, Number(item.t) || 0), 0),
+  );
   const messageSequenceRef = useRef(
     dbRef.current.messages.reduce(
       (sequence, message) => Math.max(sequence, Number(message.seq) || 0),
@@ -1035,6 +1039,14 @@ export function AppProvider({ children }) {
         restored.posts = preserveLocalMedia(restored.posts, dbRef.current.posts);
         restored.reels = preserveLocalMedia(restored.reels, dbRef.current.reels);
         restored.stories = preserveLocalMedia(restored.stories, dbRef.current.stories);
+        mediaCursorRef.current = [
+          ...restored.posts,
+          ...restored.reels,
+          ...restored.stories,
+        ].reduce(
+          (cursor, item) => Math.max(cursor, Number(item.t) || 0),
+          mediaCursorRef.current,
+        );
 
         const serverMessageIds = new Set(
           restored.messages.map((message) => String(message.id)),
@@ -2058,7 +2070,7 @@ export function AppProvider({ children }) {
         const since = Math.max(0, messageCursorRef.current - 3000);
         const after = messageSequenceRef.current;
         const response = await fetch(
-          `/plat/social/updates/?since=${since}&after=${after}`,
+          `/plat/social/updates/?since=${since}&after=${after}&mediaSince=${mediaCursorRef.current}`,
           {
             credentials: "same-origin",
             cache: "no-store",
@@ -2143,6 +2155,56 @@ export function AppProvider({ children }) {
           a: localId(follow.a),
           b: localId(follow.b),
         }));
+        const incomingPosts = (remote.posts || []).map((post) => ({
+          ...post,
+          userId: localId(post.userId),
+          likes: (post.likes || []).map(localId),
+          comments: (post.comments || []).map((comment) => ({
+            ...comment,
+            userId: localId(comment.userId),
+          })),
+        }));
+        const incomingReels = (remote.reels || []).map((reel) => ({
+          ...reel,
+          userId: localId(reel.userId),
+          likes: (reel.likes || []).map(localId),
+          views: (reel.views || []).map(localId),
+          comments: (reel.comments || []).map((comment) => ({
+            ...comment,
+            userId: localId(comment.userId),
+          })),
+        }));
+        const incomingStories = (remote.stories || []).map((story) => ({
+          ...story,
+          userId: localId(story.userId),
+        }));
+        const existingPostIds = new Set(
+          dbRef.current.posts.map((post) => String(post.id)),
+        );
+        const existingReelIds = new Set(
+          dbRef.current.reels.map((reel) => String(reel.id)),
+        );
+        const existingStoryIds = new Set(
+          dbRef.current.stories.map((story) => String(story.id)),
+        );
+        const newPosts = incomingPosts.filter(
+          (post) => !existingPostIds.has(String(post.id)),
+        );
+        const newReels = incomingReels.filter(
+          (reel) => !existingReelIds.has(String(reel.id)),
+        );
+        const newStories = incomingStories.filter(
+          (story) => !existingStoryIds.has(String(story.id)),
+        );
+        const newMedia = [...newPosts, ...newReels, ...newStories];
+        const latestMediaTimestamp = [
+          ...incomingPosts,
+          ...incomingReels,
+          ...incomingStories,
+        ].reduce(
+          (cursor, item) => Math.max(cursor, Number(item.t) || 0),
+          mediaCursorRef.current,
+        );
         const oldNotifs = new Map(
           dbRef.current.notifs
             .filter((notif) => notif.to === meId)
@@ -2202,6 +2264,7 @@ export function AppProvider({ children }) {
           );
         const changed =
           messagesChanged ||
+          newMedia.length > 0 ||
           JSON.stringify(dbRef.current.follows) !== JSON.stringify(follows) ||
           JSON.stringify(dbRef.current.notifs) !== JSON.stringify(notifs) ||
           JSON.stringify(dbRef.current.deletedMessages) !==
@@ -2212,8 +2275,11 @@ export function AppProvider({ children }) {
             JSON.stringify(blockedUsers) ||
           JSON.stringify(dbRef.current.blockedByUsers) !==
             JSON.stringify(blockedByUsers);
-        if (!changed) return;
-        save(
+        if (!changed) {
+          mediaCursorRef.current = latestMediaTimestamp;
+          return;
+        }
+        const saved = save(
           (d) => {
             const messages = new Map(
               d.messages.map((message) => [message.id, message]),
@@ -2233,6 +2299,9 @@ export function AppProvider({ children }) {
               else delete message.pinnedAt;
             });
             d.messages = [...messages.values()];
+            d.posts.push(...newPosts);
+            d.reels.push(...newReels);
+            d.stories.push(...newStories);
             d.deletedMessages = deleted;
             d.hiddenChats = hiddenChats;
             d.blockedUsers = blockedUsers;
@@ -2242,6 +2311,7 @@ export function AppProvider({ children }) {
           },
           { skipRemoteSync: true },
         );
+        if (saved) mediaCursorRef.current = latestMediaTimestamp;
       } catch {
         /* ignore */
       }

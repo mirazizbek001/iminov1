@@ -395,17 +395,17 @@ class RegistrationTests(APITestCase):
 		UserBlock.objects.create(blocker=blocker, blocked=viewer)
 		SocialState.objects.create(payload={
 			'posts': [
-				{'id': 'public-post', 'userId': 'not_followed'},
+				{'id': 'public-post', 'userId': 'not_followed', 't': 11},
 				{'id': 'blocked-post', 'userId': 'blocked_author'},
 				{'id': 'blocker-post', 'userId': 'blocker_author'},
 			],
 			'reels': [
-				{'id': 'public-reel', 'userId': 'not_followed'},
+				{'id': 'public-reel', 'userId': 'not_followed', 't': 12},
 				{'id': 'blocked-reel', 'userId': 'blocked_author'},
 				{'id': 'blocker-reel', 'userId': 'blocker_author'},
 			],
 			'stories': [
-				{'id': 'public-story', 'userId': 'not_followed', 'profileOnly': True},
+				{'id': 'public-story', 'userId': 'not_followed', 'profileOnly': True, 't': 13},
 				{'id': 'blocked-story', 'userId': 'blocked_author'},
 				{'id': 'blocker-story', 'userId': 'blocker_author'},
 			],
@@ -419,6 +419,11 @@ class RegistrationTests(APITestCase):
 		self.assertEqual([item['id'] for item in response.data['stories']], ['public-story'])
 		self.assertEqual(response.data['blockedUsers'], ['blocked_author'])
 		self.assertEqual(response.data['blockedByUsers'], ['blocker_author'])
+
+		updates = self.client.get('/plat/social/updates/?mediaSince=0')
+		self.assertEqual([item['id'] for item in updates.data['posts']], ['public-post'])
+		self.assertEqual([item['id'] for item in updates.data['reels']], ['public-reel'])
+		self.assertEqual([item['id'] for item in updates.data['stories']], ['public-story'])
 
 	def test_social_state_saves_and_returns_owner_data_without_other_private_messages(self):
 		owner = User.objects.create_user(username='owner', password='password123')

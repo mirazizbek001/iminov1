@@ -555,6 +555,10 @@ def social_updates(request):
 		after = max(0, int(request.query_params.get('after', '0')))
 	except (TypeError, ValueError):
 		after = 0
+	try:
+		media_since = max(0, int(request.query_params.get('mediaSince', '0')))
+	except (TypeError, ValueError):
+		media_since = 0
 	has_sequence_cursor = 'after' in request.query_params
 	conversation_messages = [
 		item for item in payload.get('messages', [])
@@ -571,6 +575,16 @@ def social_updates(request):
 	blocked_users = list(UserBlock.objects.filter(blocker=request.user).values_list('blocked__username', flat=True))
 	blocked_by_users = list(UserBlock.objects.filter(blocked=request.user).values_list('blocker__username', flat=True))
 	blocked_usernames = set(blocked_users) | set(blocked_by_users)
+	new_media = {key: [] for key in ('posts', 'reels', 'stories')}
+	if 'mediaSince' in request.query_params:
+		for key in new_media:
+			for item in payload.get(key, []):
+				try:
+					created_at = int(item.get('t') or 0)
+				except (TypeError, ValueError):
+					continue
+				if item.get('userId') not in blocked_usernames and created_at > media_since:
+					new_media[key].append(item)
 	follows = [
 		item for item in payload.get('follows', [])
 		if item.get('a') not in blocked_usernames and item.get('b') not in blocked_usernames
@@ -601,6 +615,9 @@ def social_updates(request):
 		'hiddenChats': hidden_chats,
 		'blockedUsers': blocked_users,
 		'blockedByUsers': blocked_by_users,
+		'posts': new_media['posts'],
+		'reels': new_media['reels'],
+		'stories': new_media['stories'],
 		'follows': follows,
 		'notifs': [item for item in payload.get('notifs', []) if item.get('to') == username],
 	})

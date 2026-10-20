@@ -2046,7 +2046,12 @@ function ReelMenu({ r, size = 24, up = false, showOpen = false }) {
 }
 function ReelsCard({ r }) {
   const { byId, me, A, open, db } = useC();
-  const u = byId(r.userId);
+  const u = byId(r.userId) || {
+    id: r.userId,
+    username: String(r.userId),
+    name: "",
+    avatar: null,
+  };
   const [muted, setMuted] = useReelMuted();
   const [paused, setPaused] = useState(false);
   const [share, setShare] = useState(false);
@@ -2057,7 +2062,6 @@ function ReelsCard({ r }) {
   const video = useRef(null);
   const bar = useRef(null);
   useVideoAutoplay(video, muted, setMuted, 0.65, r.id);
-  if (!u) return null;
   const dbl = () => {
     if (!liked) A.like(r.id, "reel");
     setHeart(true);
@@ -2135,7 +2139,7 @@ function ReelsCard({ r }) {
               <Av u={u} s={34} />
             </button>
             <b className="max-w-[40%] truncate text-sm">{u.username}</b>
-            {u.id !== me.id && <FollowBtn id={u.id} />}
+            {u.id !== me.id && byId(r.userId) && <FollowBtn id={u.id} />}
           </div>
           {r.likes.length > 0 && (
             <p className="text-sm font-semibold">
@@ -2413,13 +2417,17 @@ function CreateReel({ close }) {
 
 function HomeReelCard({ r }) {
   const { byId, me, A, open, db } = useC();
-  const u = byId(r.userId);
+  const u = byId(r.userId) || {
+    id: r.userId,
+    username: String(r.userId),
+    name: "",
+    avatar: null,
+  };
   const [muted, setMuted] = useReelMuted();
   const video = useRef(null);
   const [share, setShare] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   useVideoAutoplay(video, muted, setMuted, 0.5, r.id);
-  if (!u) return null;
   const liked = r.likes.includes(me.id);
   const saved = (db.saved[me.id] || []).includes(r.id);
   const count = (r.comments || []).length;
@@ -2434,7 +2442,7 @@ function HomeReelCard({ r }) {
           <b className="text-sm">{u.username}</b>
         </button>
         <span className="text-sm text-neutral-500">• {ago(r.t)}</span>
-        {u.id !== me.id && <FollowBtn id={u.id} />}
+        {u.id !== me.id && byId(r.userId) && <FollowBtn id={u.id} />}
         <div className="ml-auto">
           <ReelMenu r={r} size={22} showOpen />
         </div>

@@ -129,8 +129,12 @@ function Profile({ id, goChat }) {
   const profileReels = db.reels
     .filter((reel) => reel.userId === u.id && !connectionHidden)
     .sort((a, b) => b.t - a.t);
+  const profilePosts = [
+    ...posts,
+    ...profileReels.map((reel) => ({ ...reel, kind: "reel" })),
+  ].sort((a, b) => b.t - a.t);
   const visiblePosts =
-    tab === "saved" ? savedPosts : tab === "posts" ? posts : [];
+    tab === "saved" ? savedPosts : tab === "posts" ? profilePosts : [];
   const tabs = [
     ["posts", Grid3X3, "POSTLAR"],
     ["reels", Play, "REELS"],
@@ -223,7 +227,7 @@ function Profile({ id, goChat }) {
           </div>
           <div className="my-3 flex gap-3 text-[13px] sm:my-5 sm:gap-10 sm:text-[15px]">
             <span>
-              <b>{posts.length}</b> ta post
+              <b>{profilePosts.length}</b> ta post
             </span>
             {connectionHidden ? (
               <span className="text-neutral-500">

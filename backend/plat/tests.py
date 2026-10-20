@@ -327,6 +327,11 @@ class RegistrationTests(APITestCase):
 				{'id': 'blocked-reel', 'userId': 'blocked_author'},
 				{'id': 'blocker-reel', 'userId': 'blocker_author'},
 			],
+			'stories': [
+				{'id': 'public-story', 'userId': 'not_followed', 'profileOnly': True},
+				{'id': 'blocked-story', 'userId': 'blocked_author'},
+				{'id': 'blocker-story', 'userId': 'blocker_author'},
+			],
 		})
 		self.client.force_login(viewer)
 
@@ -334,6 +339,7 @@ class RegistrationTests(APITestCase):
 
 		self.assertEqual([item['id'] for item in response.data['posts']], ['public-post'])
 		self.assertEqual([item['id'] for item in response.data['reels']], ['public-reel'])
+		self.assertEqual([item['id'] for item in response.data['stories']], ['public-story'])
 		self.assertEqual(response.data['blockedUsers'], ['blocked_author'])
 		self.assertEqual(response.data['blockedByUsers'], ['blocker_author'])
 

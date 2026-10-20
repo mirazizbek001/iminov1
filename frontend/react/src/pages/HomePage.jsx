@@ -42,17 +42,18 @@ function HomePage() {
     return () => observer.disconnect();
   }, [hasMore, visibleCount]);
   const activeStories = db.stories.filter(
-    (s) => s.t > oneDayAgo && !s.profileOnly,
+    (s) => s.t > oneDayAgo && !blockedIds.has(s.userId),
   );
+  const storyOwnerIds = new Set(activeStories.map((story) => story.userId));
   const storyUsers = [
     me,
-    ...db.follows
-      .filter((f) => f.a === me.id)
-      .map((f) => db.users.find((u) => u.id === f.b))
-      .filter(Boolean),
-  ].filter(
-    (u) => u.id === me.id || activeStories.some((s) => s.userId === u.id),
-  );
+    ...db.users.filter(
+      (user) =>
+        user.id !== me.id &&
+        storyOwnerIds.has(user.id) &&
+        !blockedIds.has(user.id),
+    ),
+  ];
   return (
     <div className="mx-auto flex max-w-[935px] justify-center gap-16 px-0 pt-2 sm:px-3 lg:pt-5">
       <section className="ig-feed w-full max-w-[630px]">

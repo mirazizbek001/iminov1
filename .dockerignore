@@ -1,7 +1,9 @@
 .git
-**/__pycache__
-**/*.pyc
-.venv
-staticfiles
-media
+node_modules
+frontend/react/node_modules
+frontend/react/dist
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/**/*.pyc
 *.zip

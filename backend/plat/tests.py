@@ -99,7 +99,7 @@ class RegistrationTests(APITestCase):
 		user = User.objects.get(username='new_user')
 		self.assertTrue(user.check_password('secret123'))
 
-	def test_register_allows_reusing_email_with_a_different_username(self):
+	def test_register_rejects_reusing_email_with_a_different_username(self):
 		User.objects.create_user(
 			username='first_account',
 			email='shared@example.com',
@@ -113,9 +113,22 @@ class RegistrationTests(APITestCase):
 			'password': 'secret456',
 		}, format='json')
 
-		self.assertEqual(response.status_code, 201)
-		self.assertTrue(User.objects.filter(username='second_account').exists())
-		self.assertEqual(User.objects.filter(email__iexact='shared@example.com').count(), 2)
+		self.assertEqual(response.status_code, 409)
+		self.assertFalse(User.objects.filter(username='second_account').exists())
+		self.assertEqual(User.objects.filter(email__iexact='shared@example.com').count(), 1)
+
+	def test_parent_register_rejects_email_used_by_another_account(self):
+		User.objects.create_user(username='existing_parent_email', email='shared@example.com', password='secret123')
+
+		response = self.client.post('/plat/parent/register/', {
+			'username': 'new_parent',
+			'email': 'SHARED@example.com',
+			'name': 'New Parent',
+			'password': 'different123',
+		}, format='json')
+
+		self.assertEqual(response.status_code, 409)
+		self.assertFalse(User.objects.filter(username='new_parent').exists())
 
 	def test_register_rejects_duplicate_username(self):
 		User.objects.create_user(username='taken', password='secret123')
@@ -232,6 +245,7 @@ class RegistrationTests(APITestCase):
 			'email_verified': 'true',
 			'email': 'Admin@Example.com',
 			'name': 'Admin',
+			'sub': 'admin-google-sub',
 			'exp': int(timezone.now().timestamp()) + 300,
 		}
 
@@ -239,6 +253,69 @@ class RegistrationTests(APITestCase):
 
 		self.assertEqual(response.status_code, 403)
 		self.assertFalse(User.objects.filter(username='admin').exists())
+
+	@override_settings(GOOGLE_CLIENT_ID='test-google-client-id')
+	@patch('plat.views._verify_google_token')
+	def test_google_identity_reuses_same_user_when_email_changes(self, mock_verify_google_token):
+		mock_verify_google_token.side_effect = [
+			{
+				'aud': 'test-google-client-id',
+				'iss': 'accounts.google.com',
+				'email_verified': 'true',
+				'email': 'first@example.com',
+				'name': 'Google User',
+				'sub': 'stable-google-sub',
+				'exp': int(timezone.now().timestamp()) + 300,
+			},
+			{
+				'aud': 'test-google-client-id',
+				'iss': 'accounts.google.com',
+				'email_verified': 'true',
+				'email': 'another-address@example.com',
+				'name': 'Google User',
+				'sub': 'stable-google-sub',
+				'exp': int(timezone.now().timestamp()) + 300,
+			},
+		]
+
+		first_response = self.client.post('/plat/google/', {'credential': 'first-token'}, format='json')
+		second_response = self.client.post('/plat/google/', {'credential': 'second-token'}, format='json')
+
+		self.assertEqual(first_response.status_code, 201)
+		self.assertEqual(second_response.status_code, 200)
+		self.assertEqual(first_response.data['id'], second_response.data['id'])
+		self.assertEqual(User.objects.count(), 1)
+
+	@override_settings(GOOGLE_CLIENT_ID='test-google-client-id')
+	@patch('plat.views._verify_google_token')
+	def test_google_login_rejects_second_identity_for_existing_email(self, mock_verify_google_token):
+		mock_verify_google_token.side_effect = [
+			{
+				'aud': 'test-google-client-id',
+				'iss': 'accounts.google.com',
+				'email_verified': 'true',
+				'email': 'shared-google@example.com',
+				'name': 'Google User',
+				'sub': 'first-google-sub',
+				'exp': int(timezone.now().timestamp()) + 300,
+			},
+			{
+				'aud': 'test-google-client-id',
+				'iss': 'accounts.google.com',
+				'email_verified': 'true',
+				'email': 'shared-google@example.com',
+				'name': 'Google User',
+				'sub': 'second-google-sub',
+				'exp': int(timezone.now().timestamp()) + 300,
+			},
+		]
+
+		first_response = self.client.post('/plat/google/', {'credential': 'first-token'}, format='json')
+		second_response = self.client.post('/plat/google/', {'credential': 'second-token'}, format='json')
+
+		self.assertEqual(first_response.status_code, 201)
+		self.assertEqual(second_response.status_code, 409)
+		self.assertEqual(User.objects.count(), 1)
 
 	def test_saved_admin_hours_are_returned_by_uncached_access_status(self):
 		admin = User.objects.create_superuser(username='admin', email='admin@example.com', password='secret123')

@@ -21,7 +21,7 @@ from rest_framework.response import Response
 from .passwords import password_error
 from .throttles import LOGIN_THROTTLES
 from rest_framework import status
-from .models import CallSignal, LoginActivity, ModerationReport, SocialState, PlatformSettings, UsageState, UserBlock, UserPresence, UserRestriction
+from .models import CallSignal, GoogleIdentity, LoginActivity, ModerationReport, SocialState, PlatformSettings, UsageState, UserBlock, UserPresence, UserRestriction
 from .parental import child_control, child_hours_blocked, is_parent
 from .safety import get_platform_settings, is_service_open, settings_payload, suspected_adult_text, validate_media_item, validate_text
 
@@ -332,6 +332,8 @@ def register(request):
 			_record_login(request._request, existing_user)
 			return Response({'id': existing_user.id, 'username': existing_user.username, 'email': existing_user.email, 'name': existing_user.first_name, 'isAdmin': _is_admin_user(existing_user), 'csrfToken': get_token(request._request)})
 		return Response({'error': 'Bu username band'}, status=status.HTTP_409_CONFLICT)
+	if User.objects.filter(email__iexact=email).exists():
+		return Response({'error': 'Bu email bilan akkaunt allaqachon mavjud'}, status=status.HTTP_409_CONFLICT)
 	if username == 'admin':
 		return Response({'error': 'Admin akkauntini faqat server administratori yaratishi mumkin.'}, status=status.HTTP_403_FORBIDDEN)
 	password_problem = password_error(password, username=username, email=email, name=name)
@@ -1389,6 +1391,8 @@ def _verify_google_token(credential):
 		return None
 	if str(data.get('email_verified')).lower() != 'true' or not data.get('email'):
 		return None
+	if not data.get('sub'):
+		return None
 	try:
 		if int(data.get('exp', 0)) < int(timezone.now().timestamp()):
 			return None
@@ -1415,19 +1419,47 @@ def google_login(request):
 		return Response({'error': 'Google orqali tasdiqlab bo‘lmadi. Qayta urinib ko‘ring.'}, status=status.HTTP_401_UNAUTHORIZED)
 	email = data['email'].strip().lower()
 	name = (data.get('name') or email.split('@')[0]).strip()
-	user = User.objects.filter(email__iexact=email).first()
+	subject = data['sub']
+	identity = GoogleIdentity.objects.select_related('user').filter(subject=subject).first()
 	created = False
+	user = identity.user if identity else None
 	if not user:
-		if not is_service_open():
-			return _closed_response('hours')
-		candidate = _unique_username(email, name)
-		if candidate.lower() == 'admin':
-			return Response({'error': 'Admin akkauntini faqat server administratori yaratishi mumkin.'}, status=status.HTTP_403_FORBIDDEN)
-		user = User.objects.create_user(username=candidate, email=email, first_name=name[:150])
-		user.set_unusable_password()
-		user.save()
-		created = True
-	elif not _service_open_for(user) or is_parent(user):
+		existing_user = User.objects.filter(email__iexact=email).first()
+		if existing_user and GoogleIdentity.objects.filter(user=existing_user).exists():
+			return Response(
+				{'error': 'Bu Google akkaunti boshqa akkauntga ulangan.'},
+				status=status.HTTP_409_CONFLICT,
+			)
+		if existing_user:
+			user = existing_user
+			try:
+				with transaction.atomic():
+					GoogleIdentity.objects.create(user=user, subject=subject)
+			except IntegrityError:
+				identity = GoogleIdentity.objects.select_related('user').filter(subject=subject).first()
+				if not identity:
+					return Response({'error': 'Google akkauntni ulab bo‘lmadi.'}, status=status.HTTP_409_CONFLICT)
+				user = identity.user
+		else:
+			if not is_service_open():
+				return _closed_response('hours')
+			candidate = _unique_username(email, name)
+			if candidate.lower() == 'admin':
+				return Response({'error': 'Admin akkauntini faqat server administratori yaratishi mumkin.'}, status=status.HTTP_403_FORBIDDEN)
+			try:
+				with transaction.atomic():
+					user = User.objects.create_user(username=candidate, email=email, first_name=name[:150])
+					user.set_unusable_password()
+					user.save()
+					GoogleIdentity.objects.create(user=user, subject=subject)
+			except IntegrityError:
+				identity = GoogleIdentity.objects.select_related('user').filter(subject=subject).first()
+				if not identity:
+					return Response({'error': 'Google akkauntni ulab bo‘lmadi.'}, status=status.HTTP_409_CONFLICT)
+				user = identity.user
+			else:
+				created = True
+	if not _service_open_for(user) or is_parent(user):
 		return _closed_response('hours')
 	UsageState.objects.get_or_create(user=user)
 	if not _is_admin_user(user) and not _usage_status(user, touch=False)['allowed']:

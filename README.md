@@ -16,6 +16,6 @@ This repository root is the **whole project**. Deploy this root with Railway's D
 4. Set `SECRET_KEY` to a long random value.
 5. Open `/health` after deployment.
 
-Railway production ideally uses PostgreSQL or a Volume mounted at `/data`. If neither is configured, or the configured `DATABASE_URL` is not reachable at startup, the app now falls back to a temporary SQLite store so the service still starts and `/health` responds instead of failing with a 502.
+Railway production requires PostgreSQL or a Volume mounted at `/data`. If neither is configured, or the configured `DATABASE_URL` is not reachable at startup, the container intentionally stops with an error rather than silently using temporary SQLite and risking data loss. Link the PostgreSQL service's `DATABASE_URL` to the web service in Railway Variables, or attach a persistent Volume at `/data`.
 
 For real persistence, attach PostgreSQL or a Railway Volume; do not commit `backend/db.sqlite3` to production storage.

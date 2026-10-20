@@ -86,6 +86,8 @@ def parent_register(request):
         return Response({'error': 'Ismingizni kiriting.'}, status=400)
     if not email or '@' not in email or '.' not in email.rsplit('@', 1)[-1]:
         return Response({'error': 'To‘g‘ri email manzil kiriting.'}, status=400)
+    if User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'Bu email bilan akkaunt allaqachon mavjud.'}, status=status.HTTP_409_CONFLICT)
     password_problem = password_error(password, username=username, email=email, name=name)
     if password_problem:
         return Response({'error': password_problem}, status=400)

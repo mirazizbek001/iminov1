@@ -2701,11 +2701,7 @@ export function AppProvider({ children }) {
   };
   const seenFeedPostIds = new Set();
   const feed = db.posts
-    .filter(
-      (post) =>
-        !blockedIds.has(post.userId) &&
-        (!me || post.userId === me.id || followedIds.has(post.userId)),
-    )
+    .filter((post) => !blockedIds.has(post.userId))
     .filter((post) => {
       const id = String(post.id);
       if (seenFeedPostIds.has(id)) return false;
